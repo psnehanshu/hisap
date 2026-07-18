@@ -5,14 +5,17 @@ import {
   Figtree_700Bold,
   useFonts,
 } from '@expo-google-fonts/figtree';
+import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
 import { StatusBar } from 'expo-status-bar';
-import React, { useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { bootstrapDb } from './src/db/seed';
+import migrations from './drizzle/migrations';
+import { db } from './src/db';
+import { seedIfEmpty } from './src/db/seed';
 import Navigation from './src/navigation';
-import { colors } from './src/theme';
+import { colors, textMuted } from './src/theme';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -22,23 +25,26 @@ export default function App() {
     Figtree_700Bold,
   });
 
-  // Create tables + seed on first launch, synchronously before the first
-  // render, so screens can query the database immediately.
-  useState(() => {
-    bootstrapDb();
-    return true;
-  });
+  // Apply drizzle-kit migrations to create/upgrade the schema.
+  const { success, error } = useMigrations(db, migrations);
 
-  if (!fontsLoaded) {
+  // Seed the sample data once migrations have created the schema.
+  useEffect(() => {
+    if (success) seedIfEmpty();
+  }, [success]);
+
+  if (error) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.bg,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <View style={styles.center}>
+        <Text style={styles.errorTitle}>Couldn’t open the database</Text>
+        <Text style={styles.errorBody}>{error.message}</Text>
+      </View>
+    );
+  }
+
+  if (!fontsLoaded || !success) {
+    return (
+      <View style={styles.center}>
         <ActivityIndicator color={colors.accent} />
       </View>
     );
@@ -53,3 +59,15 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  errorTitle: { fontSize: 16, color: colors.text, marginBottom: 8 },
+  errorBody: { fontSize: 13, color: textMuted, textAlign: 'center' },
+});
